@@ -1,0 +1,116 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from numba import jit
+!pip install roifile
+
+!unzip RoiSet.zip
+
+import imageio
+from tifffile import imread
+import skimage as ski
+import skimage.io as skio
+
+import roifile 
+from roifile import roiread 
+from roifile import ImagejRoi 
+
+import os
+
+image_data = ski.io.imread('2023-02-06-OK6-UASGCAMP6s-L1-st at 15s.tif')
+print(image_data[:3].shape)
+
+#image_filtered = ski.filters.gaussian(image_data, sigma=0.5)
+image_filtered = ski.io.imread('filtered_gaussian_1um_headcast.tif')
+
+################## ROIS ##################
+
+# Get a list of all .roi files in the RoiSet directory
+RoiSet = [f for f in os.listdir('/content/RoiSet') if f.endswith('.roi')]
+
+# Load ROIs file
+rois = []
+rois_coordinates = []
+
+dict_rois_name_xy = dict()
+
+for roi_file in RoiSet:
+  # read ROIs 1 by 1 from RoiSet folder
+  roi = roiread('/content/RoiSet/'+roi_file)
+  rois.append(roi)
+  rois_coordinates.append(roi.coordinates())
+
+  stripped_roi_file = roi_file.replace('.roi', '')  
+  ### create dictionnary that links name to coordinates
+  dict_rois_name_xy[stripped_roi_file] = roi.coordinates()
+
+
+# plt.imshow(image_data[0])
+# plt.axis('off')
+# plt.show()
+
+# plt.imshow(image_filtered[0])
+# plt.axis('off')
+# plt.show()
+
+#baseline, df, df_f = DFOF_optimized(image_filtered)
+
+plot_image_overlays(image_filtered[600], rois)
+print(dict_rois_name_xy)
+
+
+
+############# PLOTTING ##################
+
+# plot for 2 pixels the orignal values and calculated baseline, and then the df_f and baseline
+
+pixel1 = 112
+pixel2 = 152
+
+
+
+
+plt.figure(figsize=(12, 6))
+
+plt.subplot(2, 1, 1)
+plt.plot(image_data[:, pixel1,pixel1], label='Original Pixel 1')
+plt.plot(baseline[:, pixel1,pixel1], label='Baseline Pixel 1')
+plt.xlabel('Frame')
+plt.ylabel('Intensity')
+plt.title('Original Value and Calculated Baseline - Pixel 1')
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(image_filtered[:, pixel1,pixel1], label='Filtered Pixel 1')
+plt.plot(baseline[:, pixel1,pixel1], label='Baseline Pixel 1')
+plt.show()
+
+
+plt.figure(figsize=(12, 6))
+
+plt.subplot(2, 1, 1)
+plt.plot(image_filtered[:, pixel2,pixel2], label='Original Pixel 2')
+plt.plot(baseline[:, pixel2,pixel2], label='Baseline Pixel 2')
+plt.xlabel('Frame')
+plt.ylabel('Intensity')
+plt.title('Original Value and Calculated Baseline - Pixel 2')
+plt.legend()
+plt.show()
+
+
+plt.figure(figsize=(12, 6))
+
+plt.subplot(2, 1, 1)
+plt.plot(df_f[:, pixel1,pixel1], alpha=0.5,label='df/f Pixel 1')
+#plt.plot(baseline[:, pixel1,pixel1], label='Baseline Pixel 1')
+#plt.plot(df_f[650:900, pixel2,pixel2], alpha=0.5, label='df/f Pixel 2')
+plt.hlines(0, 0, 250, color='red', linestyle='--', linewidth=1)
+#plt.plot(baseline[:, pixel2,pixel2], label='Baseline Pixel 2')
+plt.xlabel('Frame')
+plt.ylabel('df/f')
+plt.title('df/f and Baseline - Pixel 1 & 2')
+plt.legend()
+plt.ylim(-1,1.5)
+
+plt.tight_layout()
+plt.show()
+
