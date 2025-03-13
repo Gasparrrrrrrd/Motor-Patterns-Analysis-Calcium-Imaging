@@ -1,0 +1,71 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# To apply an ROI mask to your calcium imaging analysis:
+
+# Create a binary mask that marks your regions of interest
+# Modify to only process pixels within this mask
+
+#### rois coordinates stored in rois_coordinates
+
+########### OPTMISED + ROI
+def DFOF_optimized_roi(image_stack, rois_coordinates):
+    total_frame, total_pixel = image_stack.shape[0:2]
+    frame_rate = 50
+    smooth_frame = 3 * frame_rate // 2  # smooth over 2 seconds
+
+
+    # Get indices of pixels in ROI
+    rois_coordinates = rois_coordinates
+
+    ### make everything
+    
+
+
+    # Pre-allocate arrays with the same shape as image_stack.
+
+    df = np.zeros((total_frame, total_pixel,total_pixel))
+    df_f = np.zeros((total_frame, total_pixel,total_pixel))
+    baseline = np.zeros((total_frame, total_pixel,total_pixel))
+
+
+    # First section: frames with increasing window sizes
+    for frame in range(smooth_frame):
+        # Use vectorized percentile computation over all pixels at once
+        window = image_stack[:smooth_frame + frame]
+        baseline[frame] = np.mean(window, axis=0)
+
+        a = image_stack[frame]
+        b = baseline[frame]
+# Use np.less to perform element-wise comparison and np.where to assign values based on the comparison. instead of using an if statement, I've used np.where. np.less is used to compare the two arrays (image_stack[frame] and baseline[frame]) element-wise. Then np.where assigns a value of 0 where the comparison is True (i.e., where image_stack[frame] is less than baseline[frame]), and assigns the result of image_stack[frame] - baseline[frame] where the comparison is False. This allows for element-wise operations without ambiguity.
+        df[frame] = np.where(np.less(image_stack[frame], baseline[frame]), a - b, image_stack[frame] - baseline[frame])
+
+        df_f[frame] = df[frame] / baseline[frame]
+        # print(f'Frame {frame+1}/{total_frame}')
+
+    # Middle section: frames with full symmetric window
+    for frame in range(smooth_frame, total_frame - smooth_frame + 1):
+        window = image_stack[frame - smooth_frame:frame + smooth_frame]
+        baseline[frame] = np.mean(window, axis=0)
+
+        a = image_stack[frame]
+        b = baseline[frame]
+        df[frame] = np.where(np.less(image_stack[frame], baseline[frame]), a - b, image_stack[frame] - baseline[frame])
+
+
+        df_f[frame] = df[frame] / baseline[frame]
+        #print(f'Frame {frame+1}/{total_frame}')
+
+    # Last section: frames with decreasing window sizes at the end
+    for frame in range(total_frame - smooth_frame + 1, total_frame):
+        window = image_stack[frame - smooth_frame:total_frame]
+        baseline[frame] = np.mean(window, axis=0)
+
+        a = image_stack[frame]
+        b = baseline[frame]
+        df[frame] = np.where(np.less(image_stack[frame], baseline[frame]), a - b, image_stack[frame] - baseline[frame])
+
+        df_f[frame] = df[frame] / baseline[frame]
+        #print(f'Frame {frame+1}/{total_frame}')
+
+    return baseline, df, df_f
