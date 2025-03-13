@@ -1,0 +1,54 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+from numba import jit
+
+
+@jit
+def DFOF(image_stack):
+    total_frame , total_pixel = image_stack.shape[0:2] # pixels are squared only 2 values neeeded
+
+    frame_rate = 50
+    smooth_frame = 1 * frame_rate // 2  # Smooth over 1 seconds
+
+    df = np.zeros((total_frame, total_pixel,total_pixel))
+    df_f = np.zeros((total_frame, total_pixel,total_pixel))
+    baseline = np.zeros((total_frame, total_pixel,total_pixel))
+
+    # Calculate baseline, df, and df_f [we look at a pixel, and the window around it (smooth frame) and compute the 10th lowest percentile value in that time window which we consider baseline]
+
+    for frame in range(smooth_frame):
+
+        for i in range(total_pixel):
+          for j in range(total_pixel):
+            baseline[frame, i, j] = np.percentile(image_stack[:smooth_frame + frame,i,j], 10)
+
+        df[frame, : ] = image_stack[frame, : ] - baseline[frame, : ]
+        df_f[frame, : ] = df[frame, : ] / baseline[frame, : ]
+
+        print(f'Frame {frame+1}/{total_frame}')
+
+    for frame in range(smooth_frame, total_frame - smooth_frame + 1):
+
+      for i in range(total_pixel):
+          for j in range(total_pixel):
+            baseline[frame, : ] = np.percentile(image_stack[frame - smooth_frame:frame + smooth_frame, i, j], 10)
+
+      df[frame, : ] = image_stack[frame, : ] - baseline[frame, : ]
+      df_f[frame, : ] = df[frame, : ] / baseline[frame, : ]
+
+      print(f'Frame {frame+1}/{total_frame}')
+
+    for frame in range(total_frame - smooth_frame + 1, total_frame):
+
+      for i in range(total_pixel):
+          for j in range(total_pixel):
+            baseline[frame, : ] = np.percentile(image_stack[frame - smooth_frame:total_frame, i, j], 10)
+
+      df[frame, : ] = image_stack[frame, : ] - baseline[frame, : ]
+      df_f[frame, : ] = df[frame, : ] / baseline[frame, : ]
+
+      print(f'Frame {frame+1}/{total_frame}')
+
+    return baseline, df, df_f
+
