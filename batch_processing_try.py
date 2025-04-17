@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
@@ -45,6 +44,8 @@ def DFOF_optimized_roi(image_stack, dict_rois_name_xy,  opto_list):
 
     dict_rois_df = dict()
 
+    dict_opto_df = dict()
+
 ########## loop over every ROI
     # Create a binary mask that marks your regions of interest
     for roi_name, roi_coordinates in dict_rois_name_xy.items():
@@ -83,38 +84,34 @@ def DFOF_optimized_roi(image_stack, dict_rois_name_xy,  opto_list):
     # add ROI with center (radius,radius) location as (x,y) so it is in the right corner away from stimulus
     # compute the baseline of ROI (not of individual pixels) and addition of optogenetics --> only take the addition of optogenetics (opto stim signal - baseline)
     # in df_f: f-f0/f0, substract it to f - substract it to df of ROI of interest
+    ############################ Optogenetics artifact correction ############################
+
+      # Find the boundaries of the rectangle enclosing all ROIs
+      all_roi_coords = np.concatenate(list(dict_rois_name_xy.values()))
+      min_x = int(np.min(all_roi_coords[:, 0]))
+      max_x = int(np.max(all_roi_coords[:, 0]))
+      min_y = int(np.min(all_roi_coords[:, 1]))
+      max_y = int(np.max(all_roi_coords[:, 1]))
 
       ############# make the opto ROI a disk mask #############
-      if counter == True:
-        opto_center_x = radius + 20
-        opto_center_y =  radius + 20
+      # Calculate opto ROI center outside the rectangle, at the same y-coordinate
+    # Translate the original ROI coordinates
+      opto_roi_x = roi_x + (max_x + radius + 10 - int(center_x))  # Shift x-coordinates
+      opto_roi_y = roi_y  # Keep y-coordinates the same
 
-        # Create a coordinate grid for the entire image
-        opto_y_indices, opto_x_indices = np.meshgrid(np.arange(total_pixel), np.arange(total_pixel), indexing="ij")
+      ### Initialize opto_df with the correct shape
+      opto_df = np.zeros((total_frame, (pixel_roi)))  # Shape: (total_frames, num_pixels_in_ROI)
 
-        # Compute the distance from each pixel to the circle center
-        opto_distance_from_center = np.sqrt((opto_x_indices - opto_center_x) ** 2 + (opto_y_indices - opto_center_y) ** 2)
+      ##### Calculate baseline for each pixel in the opto ROI
+      opto_baseline = np.mean(image_stack[:stimulus_start - 1, opto_roi_y, opto_roi_x], axis=0)
 
-        # Create the binary mask (True for pixels inside the circle, False outside)
-        opto_roi_mask = opto_distance_from_center <= radius
 
-        # Get indices of pixels inside the ROI
-        opto_roi_indices =(np.where(opto_roi_mask))
-        # Unpack x and y coordinates for advanced indexing
-        opto_roi_y = opto_roi_indices[0].astype(int)
-        opto_roi_x = opto_roi_indices[1].astype(int)
+      ##### Compute the df of opto artifact for each pixel
+      for frame in range(stimulus_start, stimulus_start + stimulus_duration):
+          opto_df[frame, :] = image_stack[frame, opto_roi_y, opto_roi_x] - (opto_baseline)  # Subtract baseline from each pixel
 
-        counter = False #only run it once
+      dict_opto_df[roi_name] = opto_df  # Store pixel-wise opto_df in the dictionary
 
-        ### initialise arrays
-        opto_baseline = np.zeros(total_frame)
-        opto_df = np.zeros(total_frame)
-        ##### since it is not complex signal (not like pre-motor areas), we can compute baseline  easily:
-        opto_baseline = np.mean(image_stack[:stimulus_start-1, opto_roi_y, opto_roi_x]) ### axis = 1 means in this case along the pixel, so across pixels during 1 time frame
-
-        ##### compute the df of opto artifact
-        for frame in range(stimulus_start,stimulus_start+stimulus_duration):
-          opto_df[frame] = np.mean(image_stack[frame, opto_roi_y, opto_roi_x]) - opto_baseline
 
 
 
@@ -164,12 +161,16 @@ def DFOF_optimized_roi(image_stack, dict_rois_name_xy,  opto_list):
           df_f[frame] = df[frame] / baseline[frame]
           #print(f'Frame {frame+1}/{total_frame}')
 
+      df_f[759]=df_f[757] ### artifact at frame 759 corrected by minimal interpolation with previous data point
+      df_f[758]=df_f[757]
+
+
       dict_rois_df_f[roi_name] = df_f
       dict_rois_baseline[roi_name] = baseline
       dict_rois_df[roi_name] = df
-    return dict_rois_baseline, dict_rois_df, dict_rois_df_f, opto_df
+    return dict_rois_baseline, dict_rois_df, dict_rois_df_f, dict_opto_df
 
-################ FUNCTION TO PLOT
+######## FUNCTION TO PLOT
 def plot_image_overlays(image, overlays, roi_names, **kwargs):  # Added roi_names argument
     """Plot image and overlays (bytes) using matplotlib."""
     fig, ax = plt.subplots()
@@ -278,7 +279,7 @@ if opto != 'no':
 # plt.axis('off')
 # plt.show()
 
-dict_rois_baseline, dict_rois_df, dict_rois_df_f, opto_df= DFOF_optimized_roi(image_data, dict_rois_name_xy, opto_list)
+dict_rois_baseline, dict_rois_df, dict_rois_df_f, dict_opto_df= DFOF_optimized_roi(image_data, dict_rois_name_xy, opto_list)
 
 roi_names = list(dict_rois_name_xy.keys())
 
@@ -332,8 +333,13 @@ fig, axes = plt.subplots(num_rois, 1, figsize=(10, 6 * num_rois), sharex=True)
 for i,roi_name in enumerate(dict_rois_name_xy):
 
     dff = dict_rois_df_f[roi_name]
-    avg_pixel_df_f = np.mean(dff, axis=1)  # Calculate average dff across all pixels for this ROI
+    opto_df = dict_opto_df[roi_name]
+    baseline = dict_rois_baseline[roi_name]
 
+
+    avg_pixel_df_f = np.mean(dff- opto_df/baseline, axis = 1)  # Calculate average dff across all pixels for this ROI
+
+    axes[i].vlines(760, -1, 1, linestyles='dashed', colors='red')
     axes[i].plot(avg_pixel_df_f)  # Plot the average dff trace
     axes[i].set_ylabel('Intensity')
     axes[i].set_title(f'Average Pixel Trace for ROI {roi_name}')
@@ -343,6 +349,15 @@ for i,roi_name in enumerate(dict_rois_name_xy):
 plt.xlabel('Time Frame')
 plt.tight_layout()  # Adjust spacing to prevent overlap
 plt.show()
+
+print(np.mean(dict_opto_df["A1l"][760]))
+print(np.mean(dict_opto_df["A1l"][760]))
+
+print(np.mean(dict_opto_df["A2l"][760]))
+print(np.mean(dict_opto_df["A2l"][761]))
+
+print(np.mean(dict_opto_df["A1r"][760]))
+print(np.mean(dict_opto_df["A1r"][761]))
 
 ###########################             ###########################
 ########################### DETAILED PLOTTING ###########################
@@ -362,7 +377,10 @@ fig, axes = plt.subplots(num_rois, 1, figsize=(10, 6 * num_rois), sharex=True)
 for i,roi_name in enumerate(dict_rois_name_xy):
 
     dff = dict_rois_df_f[roi_name]
-    avg_pixel_df_f = np.mean(dff, axis=1)  # Calculate average dff across all pixels for this ROI
+    opto_df = dict_opto_df[roi_name]
+    baseline = dict_rois_baseline[roi_name]
+
+    avg_pixel_df_f = np.mean(dff- opto_df/baseline, axis = 1)  # Calculate average dff across all pixels for this ROI
 
     smoothed_df_f = whittaker_smoother.smooth(avg_pixel_df_f)
 
@@ -385,6 +403,8 @@ plt.show()
 import numpy as np
 import matplotlib.pyplot as plt
 from whittaker_eilers import WhittakerSmoother
+import os
+
 
 # Initialize the Whittaker smoother
 whittaker_smoother = WhittakerSmoother(
@@ -394,7 +414,7 @@ whittaker_smoother = WhittakerSmoother(
 num_rois = len(dict_rois_name_xy)
 offset_height = 0.35 # Define vertical spacing between traces
 
-fig, ax = plt.subplots(figsize=(10, 6))
+fig, ax = plt.subplots(figsize=(10, 6), dpi=600 )
 
 # Custom sorting function to prioritize 'T' ROIs
 def sort_roi_names(roi_name):
@@ -420,8 +440,11 @@ for i, roi_name in enumerate(sorted_rois_name_xy):
         color = 'gray'  # Set color to gray for right side
 
     dff = dict_rois_df_f[roi_name]
+    baseline = dict_rois_baseline[roi_name]
 
-    avg_pixel_df_f = np.mean(dff, axis=1)- np.mean(opto_df[:, np.newaxis]/baseline)  # Average dF/F for this ROI and correct for opto artifact
+    opto_df = dict_opto_df[roi_name]
+
+    avg_pixel_df_f = np.mean(dff- opto_df/baseline, axis = 1)  # Calculate average dff across all pixels for this ROI
     smoothed_df_f = np.array(whittaker_smoother.smooth(avg_pixel_df_f))
 
     # Plot the smoothed trace with offset
@@ -429,6 +452,7 @@ for i, roi_name in enumerate(sorted_rois_name_xy):
     # ax.plot(np.mean(opto_df[:, np.newaxis]/baseline, axis=1), color="red")
 
     ax.plot(smoothed_df_f + offset, color=color)
+
 
     # Add text label next to the trace
     ax.text(len(smoothed_df_f), smoothed_df_f[-1] + offset, roi_name, color=color,
@@ -443,7 +467,14 @@ ax.set_xlabel('Time Frame')
 ax.set_ylabel('ΔF/F0')
 ax.legend(loc='upper right')  # You might want to adjust the legend to include the zero line
 plt.title('Smoothed Traces with Vertical Offset and Zero Lines')
+
+save_path = '/content/Smoothed_Traces.png'  # Save to Colab's content directory
+
+plt.savefig(save_path)  # Save the figure
 plt.show()
+
+# Download the saved figure to your computer
+#files.download(save_path)
 
 ###########################             ###########################
 ########################### CORRELATION MATRIX ###########################
@@ -479,7 +510,12 @@ dict_smooth_avg_pixel_df_f = dict()
 for i,roi_name in enumerate(dict_rois_df_f):
 
     dff = dict_rois_df_f[roi_name]
-    avg_pixel_df_f = np.mean(dff, axis=1)- np.mean(opto_df[:, np.newaxis]/baseline)  # Average dF/F for this ROI and correct for opto artifact
+
+    opto_df = np.array(opto_df)
+    baseline = dict_rois_baseline[roi_name]
+
+    avg_pixel_df_f = np.mean(dff- opto_df/baseline, axis = 1)  # Calculate average dff across all pixels for this ROI
+
     smoothed_df_f = np.array(whittaker_smoother.smooth(avg_pixel_df_f))
 
     dict_smooth_avg_pixel_df_f[roi_name] = smoothed_df_f
@@ -501,17 +537,29 @@ for i in range(num_rois):
 df_corr = pd.DataFrame(correlation_matrix, index=sorted_roi_names, columns=sorted_roi_names)
 
 # Plot the correlation matrix using Seaborn heatmap
-plt.figure(figsize=(10, 8))  # Adjust figure size as needed
+plt.figure(figsize=(10, 8), dpi = 600)  # Adjust figure size as needed
 sns.heatmap(df_corr, annot=True, cmap='viridis', fmt=".2f", linewidths=.5)
 plt.title('Correlation Matrix of ROIs (Ordered)')
 plt.tight_layout()
+
+save_path = '/content/Correlation Matrix of ROIs (Ordered).png'  # Save to Colab's content directory
+
+plt.savefig(save_path)  # Save the figure
+
 plt.show()
 
+# Download the saved figure to your computer
+files.download(save_path)
 
+plt.figure(figsize=(10, 8), dpi = 600)  # Adjust figure size as needed
 # Clustered ordering based on correlation
 linkage = sns.clustermap(df_corr, method="average", metric="euclidean", row_cluster=True, col_cluster=True, figsize=(10, 8), cmap='viridis', annot=True, fmt=".2f", linewidths=.5)
 plt.title('Clustered Correlation Matrix of ROIs')
+save_path = '/content/Clustered Correlation Matrix of ROIs.png'  # Save to Colab's content directory
+plt.savefig(save_path)  # Save the figure
 plt.show()
+# Download the saved figure to your computer
+files.download(save_path)
 
 
 
@@ -520,8 +568,8 @@ plt.show()
 
 for i in range(num_rois):
     for j in range(i + 1, num_rois):  # Avoid redundant calculations
-        roi1_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[i]][stimulus_frame:stimulus_frame+stimulus_duration]
-        roi2_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[j]][stimulus_frame:stimulus_frame+stimulus_duration]
+        roi1_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[i]][stimulus_start:stimulus_start+stimulus_duration]
+        roi2_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[j]][stimulus_start:stimulus_start+stimulus_duration]
         correlation, _ = stats.pearsonr(roi1_data, roi2_data)
         correlation_matrix[i, j] = correlation_matrix[j, i] = correlation
 
@@ -529,43 +577,53 @@ for i in range(num_rois):
 df_corr = pd.DataFrame(correlation_matrix, index=sorted_roi_names, columns=sorted_roi_names)
 
 # Plot the correlation matrix using Seaborn heatmap
-plt.figure(figsize=(10, 8))  # Adjust figure size as needed
+plt.figure(figsize=(10, 8), dpi = 600)  # Adjust figure size as needed
 sns.heatmap(df_corr, annot=True, cmap='viridis', fmt=".2f", linewidths=.5)
-plt.title('Correlation Matrix of ROIs (Ordered)')
+plt.title('Correlation Matrix of ROIs DURING STIMULATION (Ordered)')
 plt.tight_layout()
+save_path = '/content/Correlation Matrix of ROIs DURING STIMULATION.png'  # Save to Colab's content directory
+plt.savefig(save_path)  # Save the figure
 plt.show()
 
+# Download the saved figure to your computer
+files.download(save_path)
 
+plt.figure(figsize=(10, 8), dpi = 600)  # Adjust figure size as needed
 # Clustered ordering based on correlation
 linkage = sns.clustermap(df_corr, method="average", metric="euclidean", row_cluster=True, col_cluster=True, figsize=(10, 8), cmap='viridis', annot=True, fmt=".2f", linewidths=.5)
 plt.title('Clustered Correlation Matrix DURING STIMULATION')
+save_path = '/content/CLUSTERED Correlation Matrix of ROIs DURING STIMULATION.png'  # Save to Colab's content directory
+plt.savefig(save_path)  # Save the figure
 plt.show()
 
-
-# Calculate correlations between all pairs of ROIs (using sorted roi_names) AFTER STIMULUS
-
-for i in range(num_rois):
-    for j in range(i + 1, num_rois):  # Avoid redundant calculations
-        roi1_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[i]][stimulus_frame:-1]
-        roi2_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[j]][stimulus_frame:-1]
-        correlation, _ = stats.pearsonr(roi1_data, roi2_data)
-        correlation_matrix[i, j] = correlation_matrix[j, i] = correlation
-
-# Create a Pandas DataFrame for the correlation matrix (using sorted roi_names)
-df_corr = pd.DataFrame(correlation_matrix, index=sorted_roi_names, columns=sorted_roi_names)
-
-# Plot the correlation matrix using Seaborn heatmap
-plt.figure(figsize=(10, 8))  # Adjust figure size as needed
-sns.heatmap(df_corr, annot=True, cmap='viridis', fmt=".2f", linewidths=.5)
-plt.title('Correlation Matrix of ROIs (Ordered)')
-plt.tight_layout()
-plt.show()
+# Download the saved figure to your computer
+files.download(save_path)
 
 
-# Clustered ordering based on correlation
-linkage = sns.clustermap(df_corr, method="average", metric="euclidean", row_cluster=True, col_cluster=True, figsize=(10, 8), cmap='viridis', annot=True, fmt=".2f", linewidths=.5)
-plt.title('Clustered Correlation Matrix of ROIs AFTER STIMULATION')
-plt.show()
+# # Calculate correlations between all pairs of ROIs (using sorted roi_names) AFTER STIMULUS
+
+# for i in range(num_rois):
+#     for j in range(i + 1, num_rois):  # Avoid redundant calculations
+#         roi1_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[i]][stimulus_start:-1]
+#         roi2_data = dict_smooth_avg_pixel_df_f[sorted_roi_names[j]][stimulus_start:-1]
+#         correlation, _ = stats.pearsonr(roi1_data, roi2_data)
+#         correlation_matrix[i, j] = correlation_matrix[j, i] = correlation
+
+# # Create a Pandas DataFrame for the correlation matrix (using sorted roi_names)
+# df_corr = pd.DataFrame(correlation_matrix, index=sorted_roi_names, columns=sorted_roi_names)
+
+# # Plot the correlation matrix using Seaborn heatmap
+# plt.figure(figsize=(10, 8))  # Adjust figure size as needed
+# sns.heatmap(df_corr, annot=True, cmap='viridis', fmt=".2f", linewidths=.5)
+# plt.title('Correlation Matrix of ROIs (Ordered)')
+# plt.tight_layout()
+# plt.show()
+
+
+# # Clustered ordering based on correlation
+# linkage = sns.clustermap(df_corr, method="average", metric="euclidean", row_cluster=True, col_cluster=True, figsize=(10, 8), cmap='viridis', annot=True, fmt=".2f", linewidths=.5)
+# plt.title('Clustered Correlation Matrix of ROIs AFTER STIMULATION')
+# plt.show()
 
 ###########################             ###########################
 ########################### SAVING DATA IN MANY FILES ###########################
@@ -634,7 +692,11 @@ dict_avg_pixel_df_f = dict()
 for i,roi_name in enumerate(dict_rois_df_f):
 
     dff = dict_rois_df_f[roi_name]
-    dict_avg_pixel_df_f[roi_name] =  np.mean(dff, axis=1)- np.mean(opto_df[:, np.newaxis]/baseline)  # Average dF/F for this ROI and correct for opto artifact
+
+    opto_df = dict_opto_df[roi_name]
+    baseline = dict_rois_baseline[roi_name]
+
+    dict_avg_pixel_df_f[roi_name] =  np.mean(dff-opto_df/baseline, axis = 1)  # Average dF/F for this ROI and correct for opto artifact
 
 my_dict = dict_avg_pixel_df_f
 
@@ -670,7 +732,12 @@ dict_smooth_avg_pixel_df_f = dict()
 for i,roi_name in enumerate(dict_rois_df_f):
 
     dff = dict_rois_df_f[roi_name]
-    dict_avg_pixel_df_f[roi_name] =  np.mean(dff, axis=1)- np.mean(opto_df[:, np.newaxis]/baseline)  # Average dF/F for this ROI and correct for opto artifact
+    opto_df = dict_opto_df[roi_name]
+    baseline = dict_rois_baseline[roi_name]
+
+    avg_pixel_df_f = np.mean(dff- opto_df/baseline, axis = 1)  # Calculate average dff across all pixels for this ROI
+
+    dict_avg_pixel_df_f[roi_name] = avg_pixel_df_f
     smoothed_df_f = np.array(whittaker_smoother.smooth(avg_pixel_df_f))
 
     dict_smooth_avg_pixel_df_f[roi_name] = smoothed_df_f
@@ -690,6 +757,12 @@ with open(Smooth_Average_DF_F0_file, "w", newline="") as f:
         row_data = [dict_smooth_avg_pixel_df_f[roi_name][i] for roi_name in header] # Extract data for each ROI for this row
         # Flatten the row_data list to write as a single row in the CSV
         w.writerow(row_data) # Write data for each ROI in this timepoint/row
+
+from google.colab import files
+files.download('/content/Baseline_Values_Allpixels_perROIs'+ image.strip('.tif')+'.csv')
+files.download('/content/DF_F0_Values_Allpixels_perROIs'+ image.strip('.tif')+'.csv')
+files.download('/content/Average_DF_F0_Values_1pixel_perROIs'+ image.strip('.tif')+'.csv')
+files.download('/content/Smooth_Average_DF_F0_Values_1pixel_perROIs'+ image.strip('.tif')+'.csv')
 
 ##### in txt file
 import csv
@@ -727,3 +800,7 @@ with open("ROW_Average_DF_F0_Values_Headcast_perROIs.csv", "w", newline="") as f
     for roi_name in roi_names:
         row_data = [roi_name] + list(dict_avg_pixel_df_f[roi_name])  # ROI name + its time series
         w.writerow(row_data)
+
+# erase all the files and folders in content
+
+# !rm -rf /content/*
