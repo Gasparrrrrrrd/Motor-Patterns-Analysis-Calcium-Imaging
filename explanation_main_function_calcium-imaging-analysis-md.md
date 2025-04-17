@@ -39,7 +39,7 @@ avg_pixel_df_f = np.mean(dff - opto_df/baseline, axis = 1)  # Calculate average 
 
 This is done in vectorised form to optimise code. Arrays dff, opto_df and baseline are (1519,151) arrays taken from corresponding dictionaries.
 
-### 3. Technical Implementation Details
+### Technical Implementation Details
 
 1. **Pixel-wise Processing**: Artifacts are calculated individually for each pixel
 2. **Temporal Specificity**: Only applied during the stimulation period (frames stimulus_start to stimulus_start+stimulus_duration)
@@ -52,13 +52,13 @@ This approach assumes that:
 2. The control region contains no relevant neural activity
 3. The artifact magnitude is additive and spatially uniform
 
-### 4. ΔF/F Calculation
+### 3. ΔF/F Calculation
 
 - Uses a sliding window approach to calculate baseline fluorescence
 - For each pixel: calculates ΔF (signal - baseline) and ΔF/F (ΔF ÷ baseline)
 - Handles edge cases at the beginning and end of recordings
 
-### 5. Optimization Techniques
+### 4. Optimization Techniques
 
 - Uses vectorized operations instead of loops where possible
 - Processes signals pixel-by-pixel within ROIs
