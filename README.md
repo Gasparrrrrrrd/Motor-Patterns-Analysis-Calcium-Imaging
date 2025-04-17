@@ -13,3 +13,5 @@ Takes Image Stacks of Calcium Imaging and Associated ROIs and Computes dF/F and 
 ## Example Correlation Matrix of all ROIs
 ![download](https://github.com/user-attachments/assets/963fc04e-21e6-4485-a0a3-c1c8d171ccf9)
 
+
+### More explanations can be found in the [description of the main function](https://github.com/Gasparrrrrrrd/Motor-Patterns-Analysis-Calcium-Imaging/blob/main/explanation_main_function_calcium-imaging-analysis-md.md)
