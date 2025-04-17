@@ -8,6 +8,7 @@ from whittaker_eilers import WhittakerSmoother
 
 !pip install roifile
 
+###### create overarching for-loop to process folder by folder
 !unzip RoiSet.zip -d RoiSet
 
 ###########################             ###########################
