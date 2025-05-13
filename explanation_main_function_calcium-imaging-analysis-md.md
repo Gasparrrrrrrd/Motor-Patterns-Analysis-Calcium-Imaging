@@ -17,11 +17,11 @@ To correct for optogenetic artifacts, we create a control region with identical 
 
 - Creates a reference ROI away from the stimulation site (this reference ROI is at exactly the same y-coordinate, to ensure similar optogenetics stimulus artifact [the illumination moves exactly vertically, hence we can ensure, if we set the same y-coordinate, that the stimulus will be corrected exactly. The x-coordinate is chosen so that it falls outside of the VNC zone: no activity signal)
   - Establishes a pre-stimulus baseline for the reference region
-  - Measures baseline fluorescence before stimulation **FOR EACH PIXEL** (baseline is very low so is just the mean of the time window before stimulation)
-  - During stimulation frames, calculates the deviation from baseline for each pixel
+  - Measures background before stimulation **FOR EACH PIXEL** (background is very low so is just the mean of the time window before stimulation)
+  - During stimulation frames, calculates the deviation from background for each pixel
   - Calculates stimulation artifacts to subtract from the actual signal **FOR EACH PIXEL** (so for each pixel you get oscillatory signal, that is different from all other pixels, apart the ones on the same y-axis).
 
-OPTO STIMULATION ARTIFACT = stimulation artifact[during stim] -- baseline
+OPTO STIMULATION ARTIFACT = stimulation artifact[during stim] -- background
 
 - Stores these deviations as the presumed artifact signal (this is done in a dictionary, with keys being ROI names, like "A5r", each entry contains a 2d array of shape (number_frames*number_pixels_in_ROI), in our case something like (1519,151))
 
