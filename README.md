@@ -85,8 +85,8 @@ For each successfully processed dataset, the pipeline generates output files con
 The pipeline is distinguished by several computational subtleties that enhance its scientific rigor:
 
 -**Placement Algorithms:** The placement of reference ROIs for artifact correction is non-trivial, involving a series of geometric checks to ensure that the reference ROI is both outside the region of interest and within image boundaries, while maintaining similar spatial properties for accurate artifact estimation.
-- **Edge Effect Management:** The use of dynamically sized sliding windows at the beginning and end of time series ensures baseline estimation accuracy even in short recordings.
-- **Automated Exception Handling:** The batch processing script is resilient to a variety of data integrity issues, logging errors and skipping problematic datasets without halting the entire batch process.
+-**Edge Effect Management:** The use of dynamically sized sliding windows at the beginning and end of time series ensures baseline estimation accuracy even in short recordings.
+-**Automated Exception Handling:** The batch processing script is resilient to a variety of data integrity issues, logging errors and skipping problematic datasets without halting the entire batch process.
 
 
 ---
